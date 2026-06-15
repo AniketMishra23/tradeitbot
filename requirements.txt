@@ -1,0 +1,14 @@
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.24.0
+python-telegram-bot>=20.0
+python-dotenv>=1.0.0
+requests>=2.28.0
+
+# --- Sentiment module (install for FinBERT / VADER news scoring) ---
+# Option A: FinBERT (best accuracy, ~440 MB one-time download)
+transformers>=4.30.0
+torch>=2.0.0        # CPU-only install: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# Option B: VADER (lightweight fallback, no GPU needed)
+vaderSentiment>=3.3.2
