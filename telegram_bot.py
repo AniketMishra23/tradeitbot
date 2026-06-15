@@ -111,15 +111,19 @@ def ticker_currency(ticker: str) -> str:
     """
     Return the display currency symbol for a ticker.
     Used in signal output to show the right currency (Rs. vs $ vs A$).
+
+    Exchange suffix checks come first so Indian tickers like ADANIPORTS.NS
+    are never misidentified as crypto (substring match on "ADA" would fire otherwise).
     """
     t = ticker.upper()
-    if t.endswith(".AX"):     return "A$"
-    if t.endswith(".L"):      return "£"
-    if t.endswith(".T"):      return "¥"
-    if "-USD" in t or "-USDT" in t or any(c in t for c in _CRYPTO_SYMBOLS):
+    if t.endswith(".NS") or t.endswith(".BO"): return "Rs."
+    if t.endswith(".AX"):  return "A$"
+    if t.endswith(".L"):   return "£"
+    if t.endswith(".T"):   return "¥"
+    if t.endswith(".HK"):  return "HK$"
+    # Crypto: exact base-symbol match (not substring) to avoid false positives
+    if "-USD" in t or "-USDT" in t or t.split("-")[0] in _CRYPTO_SYMBOLS:
         return "$"
-    if t.endswith(".NS") or t.endswith(".BO"):
-        return "Rs."
     return "$"   # default: USD for US stocks (no suffix = NASDAQ/NYSE)
 
 
@@ -149,8 +153,9 @@ def get_state(user_id: int) -> dict:
             "mode":        "idle",     # idle | fetching | chat | waiting_ticker | set_capital | set_risk
             "token":       None,       # UUID of the currently-owned fetch task (race-condition guard)
             "last_signal": None,       # plain-text signal summary for AI context injection
+            "last_result": None,       # ConfluenceResult object from the most recent analysis
             "last_ticker": None,       # last analysed ticker string
-            "history":     [],         # AI chat message history (last 10 turns)
+            "history":     [],         # AI chat message history (kept to last 20 messages = 10 turns)
             "active_task": None,       # asyncio.Task currently fetching data (if any)
         }
     return USER_STATE[user_id]
@@ -743,6 +748,7 @@ async def do_analyse(update: Update, ctx: ContextTypes.DEFAULT_TYPE, ticker: str
         # Token check: if cancelled or superseded, don't edit the message
         if state.get("mode") == "fetching" and state.get("token") == token:
             state["last_signal"] = format_signal_plain(result)
+            state["last_result"] = result
             state["last_ticker"] = result.ticker
             state["mode"]        = "idle"
             state["active_task"] = None
@@ -918,6 +924,7 @@ async def do_explain(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
     state["history"].append({"role": "user",      "content": "Explain this signal."})
     state["history"].append({"role": "assistant",  "content": reply})
+    state["history"] = state["history"][-20:]   # keep last 10 turns
     await msg.edit_text(reply[:4096])
 
 
@@ -984,6 +991,7 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply = chat(text, history=state.get("history", []), context=state.get("last_signal"))
         state["history"].append({"role": "user",      "content": text})
         state["history"].append({"role": "assistant",  "content": reply})
+        state["history"] = state["history"][-20:]   # keep last 10 turns
         await msg.edit_text(reply[:4096])
         return
 
@@ -1028,6 +1036,7 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     reply = chat(text, history=state.get("history", []))
     state["history"].append({"role": "user",      "content": text})
     state["history"].append({"role": "assistant",  "content": reply})
+    state["history"] = state["history"][-20:]   # keep last 10 turns
     await msg.edit_text(reply[:4096])
 
 
@@ -1058,159 +1067,5 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             context=last,
         )
         state["history"].append({"role": "assistant", "content": reply})
-        await msg.edit_text(reply[:4096])
-
-    elif data.startswith("refresh:"):
-        ticker = data.split(":", 1)[1]
-        msg    = await query.message.reply_text(
-            f"🔄 Refreshing <b>{escape(ticker)}</b>...", parse_mode=HTML
-        )
-        try:
-            # Run synchronous pipeline in a thread — must not block the event loop
-            text, result = await asyncio.to_thread(run_signal, ticker)
-            state["last_signal"] = format_signal_plain(result)
-            await msg.edit_text(text, parse_mode=HTML, reply_markup=signal_inline_kb(result.ticker))
-        except Exception as e:
-            await msg.edit_text(f"❌ Error: {escape(str(e))}", parse_mode=HTML)
-
-    elif data.startswith("alert:"):
-        ticker = data.split(":", 1)[1]
-        await query.message.reply_text(
-            f"🔔 Alert noted for <b>{escape(ticker)}</b>.\n"
-            f"<i>Price alerts will be available in a future update.</i>",
-            parse_mode=HTML,
-        )
-
-    elif data.startswith("alltf:"):
-        ticker = data.split(":", 1)[1]
-        last   = state.get("last_signal", "")
-
-        # format_signal_plain emits a "Timeframe detail:" section; parse it out
-        in_tf_section = False
-        tf_lines_found = []
-        for line in last.split("\n"):
-            if line.strip() == "Timeframe detail:":
-                in_tf_section = True
-                continue
-            if in_tf_section:
-                if line.startswith("  "):
-                    tf_lines_found.append(line.strip())
-                else:
-                    break
-
-        _tf_label = {"weekly": "📅 Weekly", "daily": "📆 Daily", "1hour": "⏱ 1 Hour", "15min": "⚡ 15 Min"}
-        _dir_icon = {"BULLISH": "🟢 Looks Good", "BEARISH": "🔴 Looks Weak", "NEUTRAL": "🟡 Mixed"}
-        _conf_map = {"HIGH": "Strong signal", "MEDIUM": "Moderate signal", "LOW": "Weak signal"}
-
-        lines = [f"<b>📊 {escape(ticker)} — All Timeframes</b>\n"]
-        if tf_lines_found:
-            for tf_line in tf_lines_found:
-                # Format: "weekly: BEARISH (LOW)  R:R 2.0:1"
-                parts = tf_line.split(":", 1)
-                if len(parts) < 2:
-                    continue
-                tf_key  = parts[0].strip()
-                rest    = parts[1].strip()   # "BEARISH (LOW)  R:R 2.0:1"
-                label   = _tf_label.get(tf_key, tf_key.title())
-                # Extract direction and confidence
-                dir_match = re.match(r"(\w+)\s+\((\w+)\)", rest)
-                rr_match  = re.search(r"R:R\s+([\d.]+):1", rest)
-                if dir_match:
-                    direction = dir_match.group(1)
-                    conf      = dir_match.group(2)
-                    view      = _dir_icon.get(direction, direction)
-                    conf_str  = _conf_map.get(conf, conf)
-                    rr_str    = f"  |  R:R {rr_match.group(1)}:1" if rr_match else ""
-                    lines.append(f"{label}\n  {view}  —  {conf_str}{rr_str}\n")
-                else:
-                    lines.append(f"{label}: {escape(rest)}\n")
-        else:
-            lines.append("<i>No timeframe data available. Run /analyse first.</i>")
-
-        await query.message.reply_text("\n".join(lines), parse_mode=HTML)
-
-    elif data == "set:capital":
-        state["mode"] = "set_capital"
-        await query.message.reply_text(
-            "Enter new capital in Rs. (e.g. <code>500000</code>):", parse_mode=HTML
-        )
-
-    elif data == "set:risk":
-        state["mode"] = "set_risk"
-        await query.message.reply_text(
-            "Enter risk per trade as % (e.g. <code>1.5</code>):", parse_mode=HTML
-        )
-
-    elif data == "set:watchlist":
-        lines = ["<b>Current Watchlist</b>\n"]
-        for name, ticker in cfg.WATCHLIST.items():
-            lines.append(f"  • {escape(name)} — <code>{escape(ticker)}</code>")
-        await query.message.reply_text("\n".join(lines), parse_mode=HTML)
-
-
-# ── Entry point ───────────────────────────────────────────────────────────────
-
-async def _post_init(app: Application) -> None:
-    """
-    Runs once after the bot starts up.
-    Registers the command list with Telegram so the "/" menu shows all commands.
-    """
-    commands = [
-        BotCommand("start",       "Welcome & quick start"),
-        BotCommand("analyse",     "Signal for a stock — /analyse HAL"),
-        BotCommand("scan",        "Scan full watchlist for signals"),
-        BotCommand("explain",     "Explain the last signal in plain English"),
-        BotCommand("chat",        "Ask the AI anything about markets"),
-        BotCommand("done",        "Exit chat mode"),
-        BotCommand("watchlist",   "View the scan watchlist"),
-        BotCommand("add",         "Add ticker to watchlist — /add AAPL"),
-        BotCommand("remove",      "Remove ticker from watchlist — /remove AAPL"),
-        BotCommand("setcapital",  "Set trading capital — /setcapital 500000"),
-        BotCommand("setrisk",     "Set risk per trade % — /setrisk 1.5"),
-        BotCommand("cancel",      "Cancel any running operation"),
-        BotCommand("help",        "Full command reference"),
-    ]
-    await app.bot.set_my_commands(commands)
-    log.info("Bot commands registered with Telegram.")
-
-
-def main():
-    token = os.getenv("BOT_TOKEN")
-    if not token:
-        print("ERROR: BOT_TOKEN not set in .env")
-        sys.exit(1)
-
-    print(f"AI provider: {provider_label()}")
-    if get_provider() == "none":
-        print("WARNING: No AI API key found. Add GROQ_API_KEY or GEMINI_API_KEY to .env")
-
-    app = (
-        Application.builder()
-        .token(token)
-        .post_init(_post_init)   # registers slash commands with Telegram on startup
-        .build()
-    )
-
-    app.add_handler(CommandHandler("start",       cmd_start))
-    app.add_handler(CommandHandler("help",        cmd_help))
-    app.add_handler(CommandHandler("analyse",     cmd_analyse))
-    app.add_handler(CommandHandler("scan",        cmd_scan))
-    app.add_handler(CommandHandler("explain",     cmd_explain))
-    app.add_handler(CommandHandler("chat",        cmd_chat))
-    app.add_handler(CommandHandler("done",        cmd_done))
-    app.add_handler(CommandHandler("watchlist",   cmd_watchlist))
-    app.add_handler(CommandHandler("add",         cmd_add))
-    app.add_handler(CommandHandler("remove",      cmd_remove))
-    app.add_handler(CommandHandler("setcapital",  cmd_setcapital))
-    app.add_handler(CommandHandler("setrisk",     cmd_setrisk))
-    app.add_handler(CommandHandler("cancel",      cmd_cancel))
-
-    app.add_handler(CallbackQueryHandler(on_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
-
-    print("Bot is running. Press Ctrl+C to stop.")
-    app.run_polling(drop_pending_updates=True)
-
-
-if __name__ == "__main__":
-    main()
+        state["history"] = state["history"][-20:]   # keep last 10 turns
+        await msg.edit_tex
