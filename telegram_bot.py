@@ -1068,4 +1068,144 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         state["history"].append({"role": "assistant", "content": reply})
         state["history"] = state["history"][-20:]   # keep last 10 turns
-        await msg.edit_tex
+        await msg.edit_text(reply[:4096])
+
+    elif data.startswith("refresh:"):
+        ticker = data.split(":", 1)[1]
+        msg    = await query.message.reply_text(
+            f"🔄 Refreshing <b>{escape(ticker)}</b>...", parse_mode=HTML
+        )
+        try:
+            # Run synchronous pipeline in a thread — must not block the event loop
+            text, result = await asyncio.to_thread(run_signal, ticker)
+            state["last_signal"] = format_signal_plain(result)
+            state["last_result"] = result
+            await msg.edit_text(text, parse_mode=HTML, reply_markup=signal_inline_kb(result.ticker))
+        except Exception as e:
+            await msg.edit_text(f"❌ Error: {escape(str(e))}", parse_mode=HTML)
+
+    elif data.startswith("alert:"):
+        ticker = data.split(":", 1)[1]
+        await query.message.reply_text(
+            f"🔔 Alert noted for <b>{escape(ticker)}</b>.\n"
+            f"<i>Price alerts will be available in a future update.</i>",
+            parse_mode=HTML,
+        )
+
+    elif data.startswith("alltf:"):
+        ticker  = data.split(":", 1)[1]
+        result  = state.get("last_result")
+
+        _tf_label = {"weekly": "📅 Weekly", "daily": "📆 Daily", "1hour": "⏱ 1 Hour", "15min": "⚡ 15 Min"}
+        _dir_icon = {"BULLISH": "🟢 Looks Good", "BEARISH": "🔴 Looks Weak", "NEUTRAL": "🟡 Mixed"}
+        _conf_map = {"HIGH": "Strong signal", "MEDIUM": "Moderate signal", "LOW": "Weak signal"}
+        cur       = ticker_currency(ticker)
+
+        lines = [f"<b>📊 {escape(ticker)} — All Timeframes</b>\n"]
+
+        if result and result.timeframe_signals:
+            for tf_key in ["weekly", "daily", "1hour", "15min"]:
+                sig   = result.timeframe_signals.get(tf_key)
+                label = _tf_label.get(tf_key, tf_key.title())
+                if sig is None:
+                    lines.append(f"{label}\n  <i>No data</i>\n")
+                    continue
+                view     = _dir_icon.get(sig.direction, sig.direction)
+                conf_str = _conf_map.get(sig.confidence, sig.confidence)
+                rr_str   = f"  |  R:R {sig.risk_reward:.1f}:1" if sig.risk_reward else ""
+                entry_str = (
+                    f"\n  Entry: {cur}{sig.entry_low:,.2f} – {cur}{sig.entry_high:,.2f}"
+                    if sig.entry_low and sig.entry_high else ""
+                )
+                stop_str  = f"  |  Stop: {cur}{sig.stop_loss:,.2f}" if sig.stop_loss else ""
+                lines.append(f"{label}\n  {view}  —  {conf_str}{rr_str}{entry_str}{stop_str}\n")
+        else:
+            lines.append("<i>No timeframe data available. Run /analyse first.</i>")
+
+        await query.message.reply_text("\n".join(lines), parse_mode=HTML)
+
+    elif data == "set:capital":
+        state["mode"] = "set_capital"
+        await query.message.reply_text(
+            "Enter new capital in Rs. (e.g. <code>500000</code>):", parse_mode=HTML
+        )
+
+    elif data == "set:risk":
+        state["mode"] = "set_risk"
+        await query.message.reply_text(
+            "Enter risk per trade as % (e.g. <code>1.5</code>):", parse_mode=HTML
+        )
+
+    elif data == "set:watchlist":
+        lines = ["<b>Current Watchlist</b>\n"]
+        for name, ticker in cfg.WATCHLIST.items():
+            lines.append(f"  • {escape(name)} — <code>{escape(ticker)}</code>")
+        await query.message.reply_text("\n".join(lines), parse_mode=HTML)
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+async def _post_init(app: Application) -> None:
+    """
+    Runs once after the bot starts up.
+    Registers the command list with Telegram so the "/" menu shows all commands.
+    """
+    commands = [
+        BotCommand("start",       "Welcome & quick start"),
+        BotCommand("analyse",     "Signal for a stock — /analyse HAL"),
+        BotCommand("scan",        "Scan full watchlist for signals"),
+        BotCommand("explain",     "Explain the last signal in plain English"),
+        BotCommand("chat",        "Ask the AI anything about markets"),
+        BotCommand("done",        "Exit chat mode"),
+        BotCommand("watchlist",   "View the scan watchlist"),
+        BotCommand("add",         "Add ticker to watchlist — /add AAPL"),
+        BotCommand("remove",      "Remove ticker from watchlist — /remove AAPL"),
+        BotCommand("setcapital",  "Set trading capital — /setcapital 500000"),
+        BotCommand("setrisk",     "Set risk per trade % — /setrisk 1.5"),
+        BotCommand("cancel",      "Cancel any running operation"),
+        BotCommand("help",        "Full command reference"),
+    ]
+    await app.bot.set_my_commands(commands)
+    log.info("Bot commands registered with Telegram.")
+
+
+def main():
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        print("ERROR: BOT_TOKEN not set in .env")
+        sys.exit(1)
+
+    print(f"AI provider: {provider_label()}")
+    if get_provider() == "none":
+        print("WARNING: No AI API key found. Add GROQ_API_KEY or GEMINI_API_KEY to .env")
+
+    app = (
+        Application.builder()
+        .token(token)
+        .post_init(_post_init)   # registers slash commands with Telegram on startup
+        .build()
+    )
+
+    app.add_handler(CommandHandler("start",       cmd_start))
+    app.add_handler(CommandHandler("help",        cmd_help))
+    app.add_handler(CommandHandler("analyse",     cmd_analyse))
+    app.add_handler(CommandHandler("scan",        cmd_scan))
+    app.add_handler(CommandHandler("explain",     cmd_explain))
+    app.add_handler(CommandHandler("chat",        cmd_chat))
+    app.add_handler(CommandHandler("done",        cmd_done))
+    app.add_handler(CommandHandler("watchlist",   cmd_watchlist))
+    app.add_handler(CommandHandler("add",         cmd_add))
+    app.add_handler(CommandHandler("remove",      cmd_remove))
+    app.add_handler(CommandHandler("setcapital",  cmd_setcapital))
+    app.add_handler(CommandHandler("setrisk",     cmd_setrisk))
+    app.add_handler(CommandHandler("cancel",      cmd_cancel))
+
+    app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
+
+    print("Bot is running. Press Ctrl+C to stop.")
+    app.run_polling(drop_pending_updates=True)
+
+
+if __name__ == "__main__":
+    main()
