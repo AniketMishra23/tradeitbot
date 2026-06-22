@@ -30,16 +30,16 @@ from telegram.constants import ParseMode
 
 # Add signal_bot package to path so sibling modules import cleanly
 sys.path.insert(0, os.path.dirname(__file__))
-from data_fetcher import fetch_all_timeframes, fetch_fundamentals, clear_cache
-from indicators import compute_all, latest_values
-from signal_engine import generate_signal
-from confluence import compute_confluence
-from chat_engine import chat, get_provider, provider_label
-import config as cfg
+from src.data_fetcher import fetch_all_timeframes, fetch_fundamentals, clear_cache
+from src.indicators import compute_all, latest_values
+from src.signal_engine import generate_signal
+from src.confluence import compute_confluence
+from src.chat_engine import chat, get_provider, provider_label
+from src import config as cfg
 
 # News sentiment module — optional; bot degrades gracefully if unavailable
 try:
-    from sentiment import fetch_news_sentiment
+    from src.sentiment import fetch_news_sentiment
     _SENTIMENT_AVAILABLE = True
 except ImportError:
     _SENTIMENT_AVAILABLE = False

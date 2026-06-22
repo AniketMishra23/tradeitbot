@@ -16,7 +16,7 @@
 #   LOW    : everything else
 
 from dataclasses import dataclass, field
-from config import RISK
+from .config import RISK
 
 
 @dataclass

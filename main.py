@@ -6,8 +6,8 @@
 #   python main.py HAL.NS TCS.NS LT.NS   # multiple tickers — summary + BUY/SELL details
 
 import sys
-from report import print_report, format_signal_table
-from config import WATCHLIST
+from src.report import print_report, format_signal_table
+from src.config import WATCHLIST
 
 
 def analyse_ticker(ticker: str):
@@ -26,13 +26,13 @@ def analyse_ticker(ticker: str):
 
 def _analyse_ticker_legacy(ticker: str):
     """Legacy fallback — the original monolithic pipeline."""
-    from data_fetcher import fetch_all_timeframes, fetch_fundamentals
-    from indicators import compute_all, latest_values
-    from signal_engine import generate_signal
-    from confluence import compute_confluence
+    from src.data_fetcher import fetch_all_timeframes, fetch_fundamentals
+    from src.indicators import compute_all, latest_values
+    from src.signal_engine import generate_signal
+    from src.confluence import compute_confluence
 
     try:
-        from sentiment import fetch_news_sentiment
+        from src.sentiment import fetch_news_sentiment
         _sentiment_ok = True
     except ImportError:
         _sentiment_ok = False

@@ -258,8 +258,8 @@ async def run_markdown_agent(
     Returns AgentOutput for analysts, CounterArgument for devil's advocate,
     or a raw dict for the chief strategist.
     """
-    from chat_engine import chat_with_provider
-    from config import AGENT_AI_CONFIG
+    from src.chat_engine import chat_with_provider
+    from src.config import AGENT_AI_CONFIG
 
     extra_context = ""
     if phase_2_outputs:

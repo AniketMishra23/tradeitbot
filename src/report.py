@@ -1,7 +1,7 @@
 # report.py — Terminal (stdout) signal report formatter
 # Prints colour-coded six-perspective reports and watchlist scan tables.
 
-from confluence import ConfluenceResult
+from .confluence import ConfluenceResult
 
 _GREEN  = "\033[92m"
 _RED    = "\033[91m"

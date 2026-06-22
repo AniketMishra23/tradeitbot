@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional
-from signal_engine import TimeframeSignal
-from config import RISK, TIMEFRAMES
+from .signal_engine import TimeframeSignal
+from .config import RISK, TIMEFRAMES
 
 try:
-    from sentiment import SentimentResult   # type: ignore[assignment]
+    from .sentiment import SentimentResult   # type: ignore[assignment]
 except ImportError:
     SentimentResult = None  # type: ignore[assignment,misc]
 

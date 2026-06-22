@@ -8,8 +8,8 @@ import logging
 from agents import discover_agents
 from agents.schema import AgentOutput, CounterArgument, DataBundle
 from agents.runner import run_markdown_agent
-from confluence import ConfluenceResult, Perspective
-from config import AGENT_TIMEOUTS
+from src.confluence import ConfluenceResult, Perspective
+from src.config import AGENT_TIMEOUTS
 
 log = logging.getLogger(__name__)
 
@@ -351,7 +351,7 @@ def _build_confluence_result(
 
 def _fallback_confluence(data_bundle: DataBundle) -> ConfluenceResult:
     """Fall back to the existing Python-only confluence pipeline."""
-    from confluence import compute_confluence
+    from src.confluence import compute_confluence
 
     signals = {}
     for tf_name, tf_data in data_bundle.timeframes.items():
