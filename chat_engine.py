@@ -55,11 +55,11 @@ def provider_label() -> str:
     }[get_provider()]
 
 
-def _chat_groq(messages: list[dict]) -> str:
+def _chat_groq(messages: list[dict], max_tokens: int = 1024) -> str:
     """Send messages to Groq and return the reply text."""
     resp = requests.post(
         GROQ_API_URL,
-        json={"model": GROQ_MODEL, "messages": messages, "max_tokens": 1024},
+        json={"model": GROQ_MODEL, "messages": messages, "max_tokens": max_tokens},
         headers={"Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}", "Content-Type": "application/json"},
         timeout=30,
     )
@@ -67,24 +67,25 @@ def _chat_groq(messages: list[dict]) -> str:
     return resp.json()["choices"][0]["message"]["content"].strip()
 
 
-def _chat_gemini(messages: list[dict]) -> str:
+def _chat_gemini(messages: list[dict], max_tokens: int = 1024) -> str:
     """Send messages to Gemini and return the reply text. Converts from OpenAI format."""
     contents = []
+    sys_prompt = SYSTEM_PROMPT
     for m in messages:
         if m["role"] == "system":
+            sys_prompt = m["content"]
             continue
         role = "user" if m["role"] == "user" else "model"
         contents.append({"role": role, "parts": [{"text": m["content"]}]})
 
-    # Inject system prompt into the first user message (Gemini has no system role)
     if contents and contents[0]["role"] == "user":
         contents[0]["parts"][0]["text"] = (
-            f"[System instructions]\n{SYSTEM_PROMPT}\n\n" + contents[0]["parts"][0]["text"]
+            f"[System instructions]\n{sys_prompt}\n\n" + contents[0]["parts"][0]["text"]
         )
 
     resp = requests.post(
         f"{GEMINI_API_URL}?key={os.getenv('GEMINI_API_KEY')}",
-        json={"contents": contents, "generationConfig": {"maxOutputTokens": 1024}},
+        json={"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens}},
         timeout=30,
     )
     resp.raise_for_status()
@@ -147,3 +148,41 @@ def chat(
 
     except Exception as e:
         return f"Chat error: {e}"
+
+
+def chat_with_provider(
+    prompt: str,
+    provider: str | None = None,
+    system_prompt: str | None = None,
+    max_tokens: int = 1024,
+) -> str:
+    """
+    Stateless single-shot LLM call used by the agent runner.
+
+    Unlike chat(), this has no conversation history or context injection.
+    Raises on failure instead of returning an error string — the caller
+    (agents/runner.py) handles retries and fallbacks.
+    """
+    provider = provider or get_provider()
+    if provider == "none":
+        raise RuntimeError("No AI provider configured — add GROQ_API_KEY or GEMINI_API_KEY to .env")
+
+    messages = [
+        {"role": "system", "content": system_prompt or SYSTEM_PROMPT},
+        {"role": "user",   "content": prompt},
+    ]
+
+    try:
+        if provider == "groq":
+            return _chat_groq(messages, max_tokens=max_tokens)
+        else:
+            return _chat_gemini(messages, max_tokens=max_tokens)
+
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response else "?"
+        if status == 429 and provider == "groq" and os.getenv("GEMINI_API_KEY"):
+            return _chat_gemini(messages, max_tokens=max_tokens)
+        raise
+
+    except requests.exceptions.Timeout:
+        raise

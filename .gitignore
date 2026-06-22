@@ -38,8 +38,10 @@ desktop.ini
 *.sublime-project
 *.sublime-workspace
 
-# ── Logs ─────────────────────────────────────────────────────────────────────
+# ── Logs & runtime data ──────────────────────────────────────────────────────
 *.log
 logs/
+trade_journal.json
+
 
 CLAUDE.md

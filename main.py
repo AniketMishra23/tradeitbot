@@ -6,25 +6,37 @@
 #   python main.py HAL.NS TCS.NS LT.NS   # multiple tickers — summary + BUY/SELL details
 
 import sys
-from data_fetcher import fetch_all_timeframes, fetch_fundamentals, clear_cache
-from indicators import compute_all, latest_values
-from signal_engine import generate_signal
-from confluence import compute_confluence
 from report import print_report, format_signal_table
 from config import WATCHLIST
 
-# Sentiment is optional — bot degrades gracefully if transformers/vaderSentiment not installed
-try:
-    from sentiment import fetch_news_sentiment, clear_sentiment_cache
-    _SENTIMENT_AVAILABLE = True
-except ImportError:
-    _SENTIMENT_AVAILABLE = False
-    print("[main] Sentiment dependencies not found — news scoring disabled.")
-
 
 def analyse_ticker(ticker: str):
-    """Run the full six-perspective pipeline for one ticker. Returns ConfluenceResult or None."""
-    print(f"\nFetching data for {ticker}...")
+    """Run the multi-agent pipeline for one ticker. Returns ConfluenceResult or None."""
+    print(f"\nAnalysing {ticker} (multi-agent pipeline)...")
+    try:
+        from orchestrator import analyse_sync
+        return analyse_sync(ticker, include_sentiment=True)
+    except (ImportError, RuntimeError) as e:
+        print(f"[main] Orchestrator unavailable ({e}), using legacy pipeline")
+        return _analyse_ticker_legacy(ticker)
+    except ValueError:
+        print(f"[main] No data found for {ticker}")
+        return None
+
+
+def _analyse_ticker_legacy(ticker: str):
+    """Legacy fallback — the original monolithic pipeline."""
+    from data_fetcher import fetch_all_timeframes, fetch_fundamentals
+    from indicators import compute_all, latest_values
+    from signal_engine import generate_signal
+    from confluence import compute_confluence
+
+    try:
+        from sentiment import fetch_news_sentiment
+        _sentiment_ok = True
+    except ImportError:
+        _sentiment_ok = False
+
     raw_data = fetch_all_timeframes(ticker)
 
     signals = {}
@@ -38,8 +50,7 @@ def analyse_ticker(ticker: str):
 
     fundamentals   = fetch_fundamentals(ticker)
     news_sentiment = None
-    if _SENTIMENT_AVAILABLE:
-        print(f"  Fetching news for {ticker}...")
+    if _sentiment_ok:
         news_sentiment = fetch_news_sentiment(ticker)
 
     return compute_confluence(ticker, signals, fundamentals, news_sentiment)
@@ -67,10 +78,6 @@ def main() -> None:
                 print_report(r)
         else:
             print("\n  No actionable BUY/SELL signals found.")
-
-    clear_cache()
-    if _SENTIMENT_AVAILABLE:
-        clear_sentiment_cache()
 
 
 if __name__ == "__main__":

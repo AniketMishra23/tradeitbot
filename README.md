@@ -1,6 +1,18 @@
-# Trade It — Global Market Signal Bot
+# Trade It v2 — Multi-Agent Global Market Signal Platform
 
-A Telegram bot that generates multi-timeframe trading signals for any stock, crypto, or index worldwide using a six-perspective analytical framework.
+A multi-agent trading signal analysis platform that generates sophisticated trade recommendations for any stock, crypto, or index worldwide using a six-perspective analytical framework.
+
+---
+
+## What's New in v2
+
+Trade It v2 introduces a **multi-agent architecture** where specialized agents collaborate to produce deeper, more accurate signals:
+
+- **12+ specialized agents** — each focused on a specific analytical perspective
+- **Parallel analysis** — all agents run concurrently where possible
+- **Devil's Advocate agent** — challenges the consensus before final verdict
+- **Chief Strategist agent** — synthesizes all views into a final trade recommendation
+- **Graceful fallback** — if LLM agents fail, falls back to the original Python pipeline
 
 ---
 
@@ -12,6 +24,25 @@ A Telegram bot that generates multi-timeframe trading signals for any stock, cry
 - Provides entry zone, stop loss (1.5× ATR), and two targets (2R and 3R)
 - Explains signals in plain English via Groq (llama-3.3-70b) or Gemini 2.0 Flash
 - Runs fully in Telegram with inline buttons, a persistent keyboard, and a `/scan` watchlist sweep
+
+### Multi-Agent Architecture
+
+```
+Phase 1: Data Scout (fetches OHLCV, fundamentals, news)
+    │
+    ├── [Technical Analyst]     ─┐
+    ├── [Fundamentalist]          │ Phase 2: Parallel Analysis
+    ├── [Macro Strategist]        │ (6 LLM agents + 2 Python agents)
+    ├── [Sentiment Analyst]       │
+    ├── [Sector Specialist]       │
+    ├── [Event Watcher]           │
+    ├── [Quant Engine]           ─┤
+    └── [Risk Manager]          ─┘
+    │
+    ├── [Devil's Advocate]      ─── Phase 3: Adversarial Challenge
+    │
+    └── [Chief Strategist]      ─── Phase 4: Synthesis & Final Verdict
+```
 
 ---
 
@@ -144,6 +175,53 @@ If the calculated position value exceeds 25% of capital, the final verdict is fo
 
 ---
 
+## Multi-Agent Agent Roster
+
+### Core Analyst Agents
+
+| Agent | Type | Perspective | Role |
+|---|---|---|---|
+| `data_scout` | Python | Data | Fetches OHLCV, fundamentals, news for all other agents |
+| `technical_analyst` | LLM | Technical | Chart patterns, EMA/RSI/MACD interpretation |
+| `fundamentalist` | LLM | Fundamental | P/E, ROE, D/E, earnings growth, valuation |
+| `macro_strategist` | LLM | Macro | Sector context, 52W positioning, regime analysis |
+| `sentiment_analyst` | LLM | Sentiment | News narrative, mood, headline distribution |
+| `quant_engine` | Python | Quantitative | BB%B, ATR regime, TF alignment |
+| `risk_manager` | Python | Risk | Stops, targets, position sizing, risk veto |
+
+### Optional Specialty Agents
+
+| Agent | Type | Role |
+|---|---|---|
+| `sector_specialist` | LLM | Compares stock vs sector peers |
+| `event_watcher` | LLM | Flags earnings, dividends, macro events |
+| `devils_advocate` | LLM | Argues against the consensus before final verdict |
+| `chief_strategist` | LLM | Synthesizes all views into final BUY/SELL/HOLD/NO TRADE |
+| `trade_journal` | Python | Logs signals to `trade_journal.json` |
+
+### File locations
+
+```
+agents/
+├── __init__.py         # Agent auto-discovery
+├── schema.py           # DataBundle, AgentOutput, CounterArgument
+├── runner.py           # LLM agent execution engine
+├── data_scout.py       # Phase 1 data collection
+├── technical_analyst.md
+├── fundamentalist.md
+├── macro_strategist.md
+├── sentiment_analyst.md
+├── sector_specialist.md
+├── event_watcher.md
+├── quant_engine.py
+├── risk_manager.py
+├── devils_advocate.md
+├── chief_strategist.md
+└── trade_journal.py
+```
+
+---
+
 ## News sentiment
 
 Headlines are scored by a three-tier fallback chain:
@@ -162,25 +240,48 @@ News sentiment is skipped during full watchlist scans to keep per-ticker latency
 
 ```
 Trade_bot/
-├── telegram_bot.py   # Telegram bot — command handlers, message router, inline buttons
-├── main.py           # CLI entry point for single-ticker analysis (no Telegram needed)
-├── confluence.py     # Six-perspective evaluator + multi-timeframe confluence verdict
-├── signal_engine.py  # Per-timeframe scoring → TimeframeSignal
-├── indicators.py     # Technical indicator calculations (EMA, RSI, MACD, ATR, BB, volume)
-├── data_fetcher.py   # yfinance OHLCV + fundamentals downloader with in-memory cache
-├── sentiment.py      # News sentiment pipeline (FinBERT / VADER / keyword)
-├── chat_engine.py    # AI chat via Groq (primary) / Gemini (fallback)
-├── report.py         # CLI terminal report formatter (ANSI colours)
-├── config.py         # RISK parameters, INDICATORS config, TIMEFRAMES, WATCHLIST
-├── .env.example      # Template for environment variables
-└── requirements.txt  # Python dependencies
+├── agents/                # Multi-agent modules
+│   ├── __init__.py       # Agent discovery
+│   ├── schema.py         # Data models
+│   ├── runner.py         # LLM execution engine
+│   ├── data_scout.py     # Phase 1
+│   ├── technical_analyst.md
+│   ├── fundamentalist.md
+│   ├── macro_strategist.md
+│   ├── sentiment_analyst.md
+│   ├── quant_engine.py
+│   ├── risk_manager.py
+│   ├── sector_specialist.md (optional)
+│   ├── event_watcher.md (optional)
+│   ├── devils_advocate.md
+│   ├── chief_strategist.md
+│   └── trade_journal.py
+├── orchestrator.py       # 5-phase pipeline coordinator
+├── ticker_utils.py       # Shared ticker resolution utilities
+├── telegram_bot.py       # Telegram bot — uses orchestrator with fallback
+├── main.py               # CLI entry point
+├── confluence.py         # Legacy pipeline (fallback if orchestrator unavailable)
+├── signal_engine.py      # Per-timeframe scoring
+├── indicators.py         # Technical indicator calculations
+├── data_fetcher.py       # yfinance OHLCV + fundamentals
+├── sentiment.py          # News sentiment pipeline
+├── chat_engine.py        # AI chat via Groq / Gemini
+├── report.py             # CLI report formatter
+├── config.py             # RISK, INDICATORS, TIMEFRAMES, WATCHLIST
+├── .env.example          # Environment template
+├── docs/                 # Documentation
+│   ├── PRD.md           # Product Requirements
+│   ├── BRD.md           # Business Requirements
+│   └── TRD.md           # Technical Requirements
+├── requirements.txt      # Python dependencies
+└── README.md            # This file
 ```
 
 ---
 
 ## Configuration (`config.py`)
 
-Key settings you can change:
+### Risk Parameters
 
 ```python
 RISK = {
@@ -194,6 +295,24 @@ RISK = {
 ```
 
 Capital and risk % can also be changed at runtime via `/setcapital` and `/setrisk` without restarting the bot.
+
+### Agent Configuration
+
+```python
+AGENT_AI_CONFIG = {
+    "technical_analyst":  {"provider": "groq"},
+    "fundamentalist":     {"provider": "groq"},
+    "macro_strategist":   {"provider": "groq"},
+    "sentiment_analyst":  {"provider": "groq"},
+    "devils_advocate":    {"provider": "groq"},
+    "chief_strategist":   {"provider": "groq"},
+}
+
+AGENT_TIMEOUTS = {
+    "python":   10,
+    "markdown": 30,
+}
+```
 
 The default watchlist covers 20 NSE tickers across Defence, Energy, Infra, Pharma, IT, Banks, Auto, and Tech. Use `/add` and `/remove` in Telegram to change it during a session.
 
@@ -223,12 +342,25 @@ pip install transformers torch   # ~2 GB download; FinBERT loads on first use
 
 ---
 
+## Performance
+
+| Metric | Target |
+|---|---|
+| Single-ticker analysis (full multi-agent) | < 30 seconds |
+| Single-ticker analysis (Python-only, scan mode) | < 10 seconds |
+| Full 20-ticker watchlist scan | < 3 minutes |
+| Agent timeout (Python) | 10 seconds |
+| Agent timeout (LLM) | 30 seconds |
+
+---
+
 ## Limitations and notes
 
 - **Yahoo Finance data**: yfinance is unofficial and can return 403 errors under heavy load or from cloud/VPN IPs. Run the bot on a local machine or residential IP for best results.
-- **Indian stocks**: fundamental data coverage (P/E, ROE, D/E) is limited for .NS tickers on Yahoo Finance. The Financials perspective will note when data is unavailable.
+- **Indian stocks**: fundamental data coverage (P/E, ROE, D/E) is limited for .NS tickers on Yahoo Finance. Agents will note when data is unavailable.
 - **Watchlist persistence**: `/add` and `/remove` changes are in-memory only and reset when the bot restarts. Edit `WATCHLIST` in `config.py` to make changes permanent.
 - **FinBERT startup**: the first call to the News sentiment backend downloads and loads ~400 MB of model weights. Subsequent calls are fast (model stays in memory).
+- **Multi-agent trade-off**: LLM agents add latency (~30 seconds for full analysis) but provide deeper reasoning. The `/scan` command uses Python-only agents (no LLM calls) for faster watchlist sweeps.
 - **Not financial advice**: this tool is for analytical structuring only. All trade decisions must be reviewed and executed by a human.
 
 ---

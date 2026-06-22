@@ -118,3 +118,22 @@ INDICATORS = {
     "bb_std":       2,
     "volume_ma":    20,
 }
+
+# ---------------------------------------------------------------------------
+# Multi-Agent Configuration
+# ---------------------------------------------------------------------------
+AGENT_AI_CONFIG = {
+    "technical_analyst":  {"provider": "groq"},
+    "fundamentalist":     {"provider": "groq"},
+    "macro_strategist":   {"provider": "groq"},
+    "sentiment_analyst":  {"provider": "groq"},
+    "sector_specialist":  {"provider": "groq"},
+    "event_watcher":      {"provider": "groq"},
+    "devils_advocate":    {"provider": "groq"},
+    "chief_strategist":   {"provider": "groq"},
+}
+
+AGENT_TIMEOUTS = {
+    "python":   10,
+    "markdown": 30,
+}

@@ -53,91 +53,8 @@ log = logging.getLogger(__name__)
 HTML = ParseMode.HTML
 
 
-# ── Ticker resolution ─────────────────────────────────────────────────────────
-# Common crypto base symbols — auto-resolved to SYMBOL-USD
-_CRYPTO_SYMBOLS = {
-    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX",
-    "DOT", "MATIC", "LTC", "LINK", "UNI", "ATOM", "NEAR", "SHIB",
-    "TRX", "TON", "SUI", "APT", "OP", "ARB", "FTM", "INJ", "SEI",
-}
-
-# Suffixes that yfinance already understands — pass these through unchanged
-_KNOWN_SUFFIXES = (".NS", ".BO", ".AX", ".L", ".T", ".HK", ".SI", ".TO", ".DE", ".PA")
-
-def resolve_ticker(raw: str) -> str:
-    """
-    Convert a user-typed symbol into a valid Yahoo Finance ticker.
-
-    Resolution order:
-      1. Known alias (e.g. HDFC → HDFCBANK.NS) → return mapped value
-      2. Already has a recognised exchange suffix → use as-is
-      3. Contains '-' → treat as a crypto pair (e.g. BTC-USD) → use as-is
-      4. Matches a known crypto base symbol → append -USD
-      5. Default → append .NS (Indian NSE)
-
-    Examples:
-      "HAL"         → "HAL.NS"        Indian NSE (default)
-      "AAPL"        → "AAPL.NS"       ⚠ US stocks need explicit suffix: AAPL (no suffix) is US on Yahoo
-      "CBA.AX"      → "CBA.AX"        Australian ASX (pass-through)
-      "BTC"         → "BTC-USD"       crypto auto-resolved
-      "BTC-USD"     → "BTC-USD"       already qualified, pass-through
-    """
-    # Aliases for common misspellings / old tickers that are now delisted or renamed
-    _ALIASES = {
-        "HDFC":        "HDFCBANK.NS",   # HDFC Ltd merged into HDFC Bank in 2023; HDFC.NS is delisted
-        "HDFCBANK":    "HDFCBANK.NS",
-        "BAJAJFINANCE":"BAJFINANCE.NS",
-        "M&M":         "M&M.NS",
-        "MAHINDRA":    "M&M.NS",
-    }
-
-    t = raw.upper().strip()
-    if t in _ALIASES:
-        return _ALIASES[t]
-    # Already has a recognised suffix
-    if any(t.endswith(s) for s in _KNOWN_SUFFIXES):
-        return t
-    # Already a crypto pair (contains dash e.g. BTC-USD, ETH-USDT)
-    if "-" in t:
-        return t
-    # Known crypto base → form USD pair
-    if t in _CRYPTO_SYMBOLS:
-        return f"{t}-USD"
-    # Default: Indian NSE
-    return f"{t}.NS"
-
-
-def ticker_currency(ticker: str) -> str:
-    """
-    Return the display currency symbol for a ticker.
-    Used in signal output to show the right currency (Rs. vs $ vs A$).
-
-    Exchange suffix checks come first so Indian tickers like ADANIPORTS.NS
-    are never misidentified as crypto (substring match on "ADA" would fire otherwise).
-    """
-    t = ticker.upper()
-    if t.endswith(".NS") or t.endswith(".BO"): return "Rs."
-    if t.endswith(".AX"):  return "A$"
-    if t.endswith(".L"):   return "£"
-    if t.endswith(".T"):   return "¥"
-    if t.endswith(".HK"):  return "HK$"
-    # Crypto: exact base-symbol match (not substring) to avoid false positives
-    if "-USD" in t or "-USDT" in t or t.split("-")[0] in _CRYPTO_SYMBOLS:
-        return "$"
-    return "$"   # default: USD for US stocks (no suffix = NASDAQ/NYSE)
-
-
-def market_label(ticker: str) -> str:
-    """Short human-readable market name for display in messages."""
-    t = ticker.upper()
-    if t.endswith(".NS"):       return "NSE 🇮🇳"
-    if t.endswith(".BO"):       return "BSE 🇮🇳"
-    if t.endswith(".AX"):       return "ASX 🇦🇺"
-    if t.endswith(".L"):        return "LSE 🇬🇧"
-    if t.endswith(".T"):        return "TSE 🇯🇵"
-    if t.endswith(".HK"):       return "HKEX 🇭🇰"
-    if "-USD" in t or "-USDT" in t: return "Crypto ₿"
-    return "US 🇺🇸"   # no suffix = Yahoo Finance default US market
+# ── Ticker resolution (imported from shared module) ──────────────────────────
+from ticker_utils import resolve_ticker, ticker_currency, market_label
 
 
 # ── Per-user state ────────────────────────────────────────────────────────────
@@ -247,54 +164,55 @@ SETTINGS_KB = InlineKeyboardMarkup([
 
 def run_signal(ticker: str, include_sentiment: bool = True) -> tuple[str, object]:
     """
-    Full synchronous signal pipeline for one ticker.
-    Runs inside asyncio.to_thread() so it never blocks the event loop.
+    Run the multi-agent pipeline for one ticker (or legacy fallback).
 
-    Steps:
-      1. Resolve ticker to a valid Yahoo Finance symbol (multi-market aware)
-      2. Fetch OHLCV for all 4 timeframes via yfinance
-      3. Raise ValueError immediately if ALL timeframes return no data (stock not found)
-      4. Compute indicators (EMA, RSI, MACD, ATR, BB, volume ratio)
-      5. Generate per-timeframe signal
-      6. Fetch news sentiment (FinBERT / VADER / keyword fallback)
-      7. Compute multi-timeframe confluence verdict
-      8. Format result as Telegram HTML + plain text for AI context
-
-    Parameters
-    ----------
-    include_sentiment : fetch news sentiment too (slower — skipped during
-        full watchlist scans to keep per-ticker latency low).
-
-    Returns (html_string, ConfluenceResult)
+    Returns (html_string, ConfluenceResult).
     Raises ValueError if the ticker is not found on Yahoo Finance.
     """
-    ticker = resolve_ticker(ticker)
+    try:
+        from orchestrator import analyse_sync, analyse_scan
+        if include_sentiment:
+            result = analyse_sync(ticker, include_sentiment=True)
+        else:
+            # Scan mode: Python-only, zero LLM calls
+            loop = asyncio.new_event_loop()
+            try:
+                result = loop.run_until_complete(analyse_scan(ticker))
+            finally:
+                loop.close()
+        return format_signal_html(result), result
 
-    data = fetch_all_timeframes(ticker)
+    except ValueError:
+        # Ticker not found — let it propagate to do_analyse / do_scan
+        raise
 
-    # If every timeframe returned None the ticker simply doesn't exist
-    if all(df is None for df in data.values()):
-        raise ValueError(ticker)   # caught in do_analyse / do_scan
+    except (ImportError, RuntimeError) as e:
+        log.warning("Orchestrator unavailable (%s), using legacy pipeline", e)
+        ticker = resolve_ticker(ticker)
 
-    signals = {}
-    for tf_name, df in data.items():
-        if df is None:
-            signals[tf_name] = None
-            continue
-        enriched = compute_all(df)
-        vals     = latest_values(enriched)
-        signals[tf_name] = generate_signal(tf_name, vals)
+        data = fetch_all_timeframes(ticker)
 
-    # yfinance Ticker.info is synchronous — runs in the same thread
-    fundamentals = fetch_fundamentals(ticker)
+        if all(df is None for df in data.values()):
+            raise ValueError(ticker)
 
-    news_sentiment = None
-    if include_sentiment and _SENTIMENT_AVAILABLE:
-        news_sentiment = fetch_news_sentiment(ticker)
+        signals = {}
+        for tf_name, df in data.items():
+            if df is None:
+                signals[tf_name] = None
+                continue
+            enriched = compute_all(df)
+            vals     = latest_values(enriched)
+            signals[tf_name] = generate_signal(tf_name, vals)
 
-    result = compute_confluence(ticker, signals, fundamentals, news_sentiment)
-    clear_cache()   # free memory after each analysis
-    return format_signal_html(result), result
+        fundamentals = fetch_fundamentals(ticker)
+
+        news_sentiment = None
+        if include_sentiment and _SENTIMENT_AVAILABLE:
+            news_sentiment = fetch_news_sentiment(ticker)
+
+        result = compute_confluence(ticker, signals, fundamentals, news_sentiment)
+        clear_cache()
+        return format_signal_html(result), result
 
 
 def format_signal_html(result) -> str:
