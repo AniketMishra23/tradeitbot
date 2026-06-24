@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| **Project** | Trade It v2 — Multi-Agent Architecture |
+| **Project** | Trade It — Multi-Agent Architecture |
 | **Author** | Aniket Mishra |
 | **Date** | 2026-06-22 |
 | **Version** | 1.0 |
@@ -84,7 +84,7 @@ A multi-agent system where:
 | S-8 | Backward-compatible Telegram and CLI interfaces |
 | S-9 | Configuration for AI provider per agent (Groq, Gemini, local) |
 
-### 5.2 Out of Scope (v2.0)
+### 5.2 Out of Scope
 
 | # | Item | Rationale |
 |---|---|---|
@@ -157,7 +157,7 @@ A multi-agent system where:
 | A-3 | The bot runs on a local machine or residential IP (not cloud/VPN) for Yahoo Finance reliability. |
 | A-4 | Python 3.10+ is available. |
 | A-5 | The multi-agent architecture does not require a database — in-memory state per session is sufficient. |
-| A-6 | LLM agents receive structured data as context and return structured output — no tool-use or function-calling required in v2.0. |
+| A-6 | LLM agents receive structured data as context and return structured output — no tool-use or function-calling required. |
 
 ---
 

@@ -1,10 +1,10 @@
 # Product Requirements Document (PRD)
 
-## Trade It v2 — Multi-Agent Global Market Signal Platform
+## Trade It — Multi-Agent Global Market Signal Platform
 
 | Field | Value |
 |---|---|
-| **Product** | Trade It v2 |
+| **Product** | Trade It |
 | **Author** | Aniket Mishra |
 | **Date** | 2026-06-22 |
 | **Version** | 1.0 |
@@ -517,7 +517,7 @@ This allows mixing providers — e.g., use Gemini for fundamentals (longer conte
 
 ---
 
-## 10. Future Enhancements (Post v2.0)
+## 10. Future Enhancements
 
 | # | Enhancement | Description |
 |---|---|---|
