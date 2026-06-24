@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from agents.schema import DataBundle, TickerMeta, TimeframeData
-from data_fetcher import fetch_all_timeframes, fetch_fundamentals, clear_cache
-from indicators import compute_all, latest_values
-from signal_engine import generate_signal
+from src.data_fetcher import fetch_all_timeframes, fetch_fundamentals, clear_cache
+from src.indicators import compute_all, latest_values
+from src.signal_engine import generate_signal
 from ticker_utils import resolve_ticker, ticker_currency, market_label
 
 try:
-    from sentiment import fetch_news_sentiment
+    from src.sentiment import fetch_news_sentiment
     _SENTIMENT_OK = True
 except ImportError:
     _SENTIMENT_OK = False

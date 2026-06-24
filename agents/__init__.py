@@ -33,13 +33,13 @@ def _parse_markdown_meta(path: Path) -> dict | None:
         phase = int(phase_match.group(1))
 
     return {
-        "name":        slug,
+        "name":         slug,
         "display_name": raw_name,
-        "type":        "markdown",
-        "perspective": perspective,
-        "phase":       phase,
-        "path":        path,
-        "run_fn":      None,
+        "type":         "markdown",
+        "perspective":  perspective,
+        "phase":        phase,
+        "path":         path,
+        "run_fn":       None,
     }
 
 
@@ -62,7 +62,7 @@ def discover_agents() -> dict:
             try:
                 mod = importlib.import_module(f"agents.{f.stem}")
             except Exception:
-                # Skip agents with missing dependencies (e.g. sentiment not installed)
+                # Skip agents with missing dependencies
                 continue
             if hasattr(mod, "AGENT_META") and hasattr(mod, "run"):
                 meta = dict(mod.AGENT_META)

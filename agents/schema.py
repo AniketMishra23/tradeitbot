@@ -13,7 +13,7 @@ from typing import Optional
 
 import pandas as pd
 
-from signal_engine import TimeframeSignal
+from src.signal_engine import TimeframeSignal
 
 
 @dataclass

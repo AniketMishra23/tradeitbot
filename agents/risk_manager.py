@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from agents.schema import AgentOutput, DataBundle
-from config import RISK
+from src.config import RISK
 
 AGENT_META = {
     "name":        "risk_manager",

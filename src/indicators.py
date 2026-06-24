@@ -7,7 +7,7 @@
 
 import pandas as pd
 import numpy as np
-from config import INDICATORS as CFG
+from .config import INDICATORS as CFG
 
 
 def add_ema(df: pd.DataFrame) -> pd.DataFrame:
