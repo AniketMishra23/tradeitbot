@@ -1,10 +1,10 @@
 # Technical Requirements Document (TRD)
 
-## Trade It v2 — Multi-Agent Architecture
+## Trade It — Multi-Agent Architecture
 
 | Field | Value |
 |---|---|
-| **Project** | Trade It v2 — Multi-Agent Architecture |
+| **Project** | Trade It — Multi-Agent Architecture |
 | **Author** | Aniket Mishra |
 | **Date** | 2026-06-22 |
 | **Version** | 1.0 |
@@ -102,7 +102,7 @@ Trade_bot/
 │   └── TRD.md
 │
 ├── CLAUDE.md                        # Existing — governing analytical framework
-├── README.md                        # Existing — update for v2 architecture
+├── README.md                        # Existing — update for multi-agent architecture
 └── .env                             # Existing — API keys
 ```
 
@@ -606,7 +606,7 @@ def run_signal(ticker: str, include_sentiment: bool = True) -> tuple[str, object
     result = compute_confluence(ticker, signals, fundamentals, news_sentiment)
     ...
 
-# After (v2):
+# After:
 def run_signal(ticker: str, include_sentiment: bool = True) -> tuple[str, object]:
     """Synchronous wrapper around the async orchestrator."""
     import asyncio
@@ -669,7 +669,7 @@ def chat_with_provider(
 ## 8. Configuration Additions
 
 ```python
-# config.py — additions for v2
+# config.py — additions for multi-agent support
 
 # Per-agent AI provider configuration
 # Keys: agent name (stem of the file in agents/)
@@ -876,13 +876,13 @@ Each agent logs its execution:
 | LLM prompt injection via news headlines | Headlines are data-context, not instructions; agent prompts explicitly say "use only the data provided" |
 | Yahoo Finance data manipulation | Out of scope — yfinance is the standard; no alternative without a broker API |
 | Telegram bot token exposure | Token in `.env`, not in code |
-| Agent markdown injection | Agent files are local, developer-controlled — no user-uploaded agents in v2 |
+| Agent markdown injection | Agent files are local, developer-controlled — no user-uploaded agents |
 
 ---
 
 ## 15. Performance Benchmarks (Targets)
 
-| Metric | Current | Target (v2) |
+| Metric | Before | Target |
 |---|---|---|
 | Single ticker (with sentiment) | 15–60s | < 30s |
 | Single ticker (no sentiment) | 5–15s | < 10s |
